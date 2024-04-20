@@ -1,0 +1,108 @@
+# parameters
+nc: 3  # number of classes
+depth_multiple: 1.0  # model depth multiple
+width_multiple: 1.0  # layer channel multiple
+
+# anchors
+anchors:
+  - [12,16, 19,36, 40,28]  # P3/8
+  - [36,75, 76,55, 72,146]  # P4/16
+  - [142,110, 192,243, 459,401]  # P5/32
+
+# yolov7 backbone
+backbone:
+  # [from, number, module, args]
+   [[-1, 1, Conv2dNormActivation, [16, 3, 2, None, 1, norm_layer, nn.Hardswish]], # 0
+   
+   [-1, 1, InvertedResidualv3, [3, 16, 16, True, "RE", 2, 1, norm_layer]],
+
+   [-1, 1, InvertedResidualv3, [3, 72, 24, False, "RE", 2, 1, norm_layer]],
+   [-1, 1, InvertedResidualv3, [3, 88, 24, False, "RE", 1, 1, norm_layer]],
+
+   [-1, 1, InvertedResidualv3, [5, 96, 40, True, "HS", 2, 1, norm_layer]],
+   [-1, 1, InvertedResidualv3, [5, 240, 40, True, "HS", 1, 1, norm_layer]],
+   [-1, 1, InvertedResidualv3, [5, 240, 40, True, "HS", 1, 1, norm_layer]],
+
+   [-1, 1, InvertedResidualv3, [5, 120, 48, True, "HS", 1, 1, norm_layer]],
+   [-1, 1, InvertedResidualv3, [5, 144, 48, True, "HS", 1, 1, norm_layer]], # 8 P3
+
+   [-1, 1, InvertedResidualv3, [5, 288, 96, True, "HS", 2, 1, norm_layer]],
+   [-1, 1, InvertedResidualv3, [5, 576, 96, True, "HS", 1, 1, norm_layer]], # 10 P4 
+   [-1, 1, InvertedResidualv3, [5, 576, 96, True, "HS", 1, 1, norm_layer]],
+
+   [-1, 1, Conv2dNormActivation, [576, 1, 1, None, 1, norm_layer, nn.Hardswish]],
+   ]
+
+# yolov7 head
+head:
+  [[-1, 1, SPP, [512]], # 13
+  
+   [-1, 1, Conv, [256, 1, 1, None, 1, nn.Hardswish]],
+   [-1, 1, nn.Upsample, [None, 1, 'nearest']],
+   [10, 1, Conv, [256, 1, 1, None, 1, nn.Hardswish]], # route backbone P4
+   [[-1, -2], 1, Concat, [1]],
+   
+   [-1, 1, Conv, [256, 1, 1, None, 1, nn.Hardswish]],
+   [-2, 1, SqueezeExcitation, [64, nn.Hardswish, nn.Hardswish]],
+   [-3, 1, Conv, [256, 1, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [128, 3, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [128, 3, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [128, 3, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [128, 3, 1, None, 1, nn.Hardswish]],
+   [[-1, -2, -3, -4, -5, -6, -7], 1, Concat, [1]],
+   [-1, 1, Conv, [256, 1, 1, None, 1, nn.Hardswish]], # 26
+
+   [-1, 1, Conv, [128, 1, 1, None, 1, nn.Hardswish]],
+   [-1, 1, nn.Upsample, [None, 2, 'nearest']],
+   [8, 1, Conv, [128, 1, 1, None, 1, nn.Hardswish]], # route backbone P3
+   [[-1, -2], 1, Concat, [1]],
+   
+   [-1, 1, Conv, [128, 1, 1, None, 1, nn.Hardswish]],
+   [-2, 1, SqueezeExcitation, [32, nn.Hardswish, nn.Hardswish]],
+   [-3, 1, Conv, [128, 1, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [64, 3, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [64, 3, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [64, 3, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [64, 3, 1, None, 1, nn.Hardswish]],
+   [[-1, -2, -3, -4, -5, -6, -7], 1, Concat, [1]],
+   [-1, 1, Conv, [128, 1, 1, None, 1, nn.Hardswish]], # 39
+
+   [-1, 1, MP, []],
+   [-1, 1, Conv, [128, 1, 1, None, 1, nn.Hardswish]],
+   [-3, 1, Conv, [128, 1, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [128, 3, 2, None, 1, nn.Hardswish]],
+   [[-1, -3, 26], 1, Concat, [1]], # 44
+   
+   [-1, 1, Conv, [256, 1, 1, None, 1, nn.Hardswish]],
+   [-2, 1, SqueezeExcitation, [ 64, nn.Hardswish, nn.Hardswish ] ],
+   [-3, 1, Conv, [256, 1, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [128, 3, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [128, 3, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [128, 3, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [128, 3, 1, None, 1, nn.Hardswish]],
+   [[-1, -2, -3, -4, -5, -6, -7], 1, Concat, [1]],
+   [-1, 1, Conv, [256, 1, 1, None, 1, nn.Hardswish]], # 53
+
+   [-1, 1, MP, []],
+   [-1, 1, Conv, [256, 1, 1, None, 1, nn.Hardswish]],
+   [-3, 1, Conv, [256, 1, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [256, 3, 2, None, 1, nn.Hardswish]],
+   [13, 1, MP, []],
+   [[-2, -4, -1], 1, Concat, [1]], # 59
+
+   [-1, 1, Conv, [512, 1, 1, None, 1, nn.Hardswish]],
+   [-2, 1, SqueezeExcitation, [128, nn.Hardswish, nn.Hardswish]],
+   [-3, 1, Conv, [512, 1, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [256, 3, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [256, 3, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [256, 3, 1, None, 1, nn.Hardswish]],
+   [-1, 1, Conv, [256, 3, 1, None, 1, nn.Hardswish]],
+   [[-1, -2, -3, -4, -5, -6, -7], 1, Concat, [1]],
+   [-1, 1, Conv, [512, 1, 1, None, 1, nn.Hardswish]],
+
+   [39, 1, RepConv, [256, 3, 1, None, 1, nn.Hardswish]],
+   [53, 1, RepConv, [512, 3, 1, None, 1, nn.Hardswish]],
+   [68, 1, RepConv, [1024, 3, 1, None, 1, nn.Hardswish]],
+
+   [[69,70,71], 1, IDetect, [nc, anchors]],   # Detect(P3, P4, P5)
+  ]

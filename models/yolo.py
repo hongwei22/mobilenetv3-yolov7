@@ -2,6 +2,8 @@ import argparse
 import logging
 import sys
 from copy import deepcopy
+import os
+from functools import partial
 
 sys.path.append('./')  # to run '$ python *.py' files in subdirectories
 logger = logging.getLogger(__name__)
@@ -14,10 +16,27 @@ from utils.torch_utils import time_synchronized, fuse_conv_and_bn, model_info, s
     select_device, copy_attr
 from utils.loss import SigmoidBin
 
+from torch.nn import AdaptiveAvgPool2d
+from torchvision.models.mobilenetv2 import InvertedResidual as InvertedResidualv2
+from torchvision.models.mobilenetv2 import Conv2dNormActivation
+from torchvision.models.mobilenetv3 import InvertedResidualConfig
+from torchvision.models.mobilenetv3 import InvertedResidual as InvertedResidualv3
+from torchvision.ops.misc import SqueezeExcitation
+
+from fightingcv_attention.attention.BAM import BAMBlock
+from fightingcv_attention.attention.CBAM import CBAMBlock
+from fightingcv_attention.attention.MobileViTAttention import MobileViTAttention
+from fightingcv_attention.attention.MobileViTv2Attention import MobileViTv2Attention
+
 try:
     import thop  # for FLOPS computation
+    from thop import profile
+
 except ImportError:
     thop = None
+
+from fvcore.nn import FlopCountAnalysis, flop_count_table
+from torchview import draw_graph
 
 
 class Detect(nn.Module):
@@ -740,6 +759,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
     no = na * (nc + 5)  # number of outputs = anchors * (classes + 5)
 
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
+    bneck_conf = partial(InvertedResidualConfig, width_mult=1.0)
+    norm_layer = partial(nn.BatchNorm2d, eps=0.001, momentum=0.01)
     for i, (f, n, m, args) in enumerate(d['backbone'] + d['head']):  # from, number, module, args
         m = eval(m) if isinstance(m, str) else m  # eval strings
         for j, a in enumerate(args):
@@ -759,7 +780,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                  RepResX, RepResXCSPA, RepResXCSPB, RepResXCSPC, 
                  Ghost, GhostCSPA, GhostCSPB, GhostCSPC,
                  SwinTransformerBlock, STCSPA, STCSPB, STCSPC,
-                 SwinTransformer2Block, ST2CSPA, ST2CSPB, ST2CSPC]:
+                 SwinTransformer2Block, ST2CSPA, ST2CSPB, ST2CSPC, Conv2dNormActivation, InvertedResidualv2,
+                 DWSeparableConv]:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
@@ -777,6 +799,24 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                      ST2CSPA, ST2CSPB, ST2CSPC]:
                 args.insert(2, n)  # number of repeats
                 n = 1
+        elif m is InvertedResidualv3:
+            c1 = ch[f]
+            if c2 != no:
+                args[2] = make_divisible(args[2] * gw, 8)
+            c2 = args[2]
+
+            args = [bneck_conf(c1, *args[:-1]), args[-1]]
+
+        elif m in [SqueezeExcitation, MobileViTAttention, MobileViTv2Attention]:
+            c1 = ch[f]
+            c2 = c1
+            args.insert(0, c1)
+
+        elif m in [BAMBlock, CBAMBlock]:
+            c1 = ch[f]
+            c2 = c1
+            args.insert(0, c1)
+
         elif m is nn.BatchNorm2d:
             args = [ch[f]]
         elif m is Concat:
